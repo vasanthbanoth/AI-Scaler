@@ -1,0 +1,38 @@
+# secrets — never commit
+.env
+.env.*
+!.env.example
+
+# runtime / build
+node_modules/
+.next/
+out/
+dist/
+build/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.Python
+
+# vector artifacts (regenerate via ingest)
+data/chunks.json
+data/embeddings.npy
+
+# logs & local db
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# eval outputs (keep templates, ignore runs)
+evals/runs/
+# keep sample PDF optional — regenerate before submit
+# evals/output/*.pdf
+
+# python venv
+.venv/
+
+# uploads
+uploads/
+tmp/

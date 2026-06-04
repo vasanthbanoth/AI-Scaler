@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: vasanth-persona-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: CALCOM_API_KEY
+        sync: false
+      - key: CALCOM_EVENT_TYPE_ID
+        sync: false
+      - key: VAPI_SERVER_SECRET
+        generateValue: true
+      - key: PYTHONPATH
+        value: /app
+      - key: REPO_ROOT
+        value: /app
+      - key: RUN_INGEST_ON_START
+        value: "1"
+      - key: GITHUB_USERNAME
+        value: vasanthbanoth

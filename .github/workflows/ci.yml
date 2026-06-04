@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r services/api/requirements.txt
+      - run: python -c "from app.main import app" 
+        working-directory: services/api
+        env:
+          REPO_ROOT: ${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}/services/api
