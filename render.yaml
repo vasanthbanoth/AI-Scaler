@@ -8,10 +8,16 @@ services:
     envVars:
       - key: OPENAI_API_KEY
         sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: EMBEDDING_PROVIDER
+        value: local
       - key: CALCOM_API_KEY
         sync: false
       - key: CALCOM_EVENT_TYPE_ID
         sync: false
+      - key: CALCOM_USERNAME
+        value: vasanthbanoth
       - key: VAPI_SERVER_SECRET
         generateValue: true
       - key: PYTHONPATH
@@ -22,3 +28,5 @@ services:
         value: "1"
       - key: GITHUB_USERNAME
         value: vasanthbanoth
+      - key: GITHUB_TOKEN
+        sync: false

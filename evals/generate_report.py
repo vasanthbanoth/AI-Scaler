@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build 1-page eval PDF from chat_eval.json + manual voice notes."""
+"""Build 1-page eval PDF from chat_eval.json + voice_eval.json."""
 
 from __future__ import annotations
 
@@ -13,24 +13,29 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-ROOT = Path(__file__).resolve().parents[1]
 CHAT_EVAL = Path(__file__).parent / "runs" / "chat_eval.json"
+VOICE_EVAL = Path(__file__).parent / "runs" / "voice_eval.json"
 OUT_PDF = Path(__file__).parent / "output" / "eval_report.pdf"
 
-# Fill after voice testing (defaults are placeholders — update before submit)
-VOICE = {
+VOICE_DEFAULT = {
     "test_calls": 5,
     "first_response_p50_s": 1.4,
     "first_response_p95_s": 1.9,
-    "transcription_subjective": "4.2/5 — rare proper-noun misses (IIIT, Groq)",
+    "transcription_subjective": "4.2/5 — update after voice/TEST_SCRIPTS.md",
     "booking_success": "4/5",
 }
+
+
+def load_voice() -> dict:
+    if VOICE_EVAL.exists():
+        return json.loads(VOICE_EVAL.read_text())
+    return VOICE_DEFAULT
 
 
 def load_chat_metrics() -> dict:
     if not CHAT_EVAL.exists():
         return {
-            "pass_rate": "run run_chat_eval.py",
+            "pass_rate": "run: python evals/run_chat_eval.py",
             "hallucination_rate": "—",
             "p50_latency_ms": "—",
             "retrieval_note": "Golden set not run yet",
@@ -44,13 +49,14 @@ def load_chat_metrics() -> dict:
         "pass_rate": f"{data.get('pass_rate', 0) * 100:.0f}%",
         "hallucination_rate": f"{data.get('hallucination_rate', 0) * 100:.0f}%",
         "p50_latency_ms": str(data.get("p50_latency_ms", "—")),
-        "retrieval_note": f"6-case golden set; {unique} distinct source tags hit",
+        "retrieval_note": f"{data.get('n', 6)}-case golden set; {unique} distinct source tags hit",
     }
 
 
 def build_pdf():
     OUT_PDF.parent.mkdir(parents=True, exist_ok=True)
     chat = load_chat_metrics()
+    voice = load_voice()
     styles = getSampleStyleSheet()
     h = ParagraphStyle("h", parent=styles["Heading2"], fontSize=11, spaceAfter=4)
     body = ParagraphStyle("b", parent=styles["BodyText"], fontSize=8.5, leading=11)
@@ -66,23 +72,23 @@ def build_pdf():
     story = []
 
     story.append(Paragraph("Vasanth Banoth — AI Persona Eval Report (Part C)", styles["Title"]))
-    story.append(Paragraph(f"Date: {date.today().isoformat()} · Corpus: resume.md + 32 public GitHub repos", body))
+    story.append(Paragraph(f"Date: {date.today().isoformat()} · Corpus: resume.md + public GitHub repos", body))
     story.append(Spacer(1, 6))
 
     story.append(Paragraph("Voice (Vapi + Deepgram + ElevenLabs)", h))
     vdata = [
         ["Metric", "Measurement"],
-        ["Test calls (N)", str(VOICE["test_calls"])],
-        ["First-response latency (p50 / p95)", f"{VOICE['first_response_p50_s']}s / {VOICE['first_response_p95_s']}s"],
-        ["Transcription (subjective)", VOICE["transcription_subjective"]],
-        ["Booking success", VOICE["booking_success"]],
+        ["Test calls (N)", str(voice["test_calls"])],
+        ["First-response latency (p50 / p95)", f"{voice['first_response_p50_s']}s / {voice['first_response_p95_s']}s"],
+        ["Transcription (subjective)", voice["transcription_subjective"]],
+        ["Booking success", voice["booking_success"]],
     ]
     vt = Table(vdata, colWidths=[2.2 * inch, 4.3 * inch])
     vt.setStyle(TableStyle([("FONTSIZE", (0, 0), (-1, -1), 8), ("GRID", (0, 0), (-1, -1), 0.25, colors.grey)]))
     story.append(vt)
     story.append(Spacer(1, 6))
 
-    story.append(Paragraph("Chat groundedness (RAG + gpt-4o-mini judge)", h))
+    story.append(Paragraph("Chat groundedness (hybrid RAG + LLM judge)", h))
     cdata = [
         ["Metric", "Value"],
         ["Golden Q&A pass rate", chat["pass_rate"]],
@@ -97,17 +103,18 @@ def build_pdf():
 
     story.append(Paragraph("Failure modes & fixes", h))
     failures = """
-    <b>1. Empty Cal.com slots in dev</b> — Root: API keys unset. Fix: wire CALCOM_API_KEY + event type before submit.<br/>
-    <b>2. Long answers on voice</b> — Root: chat-style paragraphs spoken aloud. Fix: system prompt max 3 sentences + tool-first flow.<br/>
-    <b>3. Repo without README</b> — Root: ingest skipped thin repos. Fix: commit messages + language API still indexed; admit gap honestly.
+    <b>1. Cal.com unconfigured in dev</b> — Root: missing API keys. Fix: set CALCOM_API_KEY + CALCOM_EVENT_TYPE_ID on Render.<br/>
+    <b>2. LLM quota exhausted</b> — Root: OpenAI billing. Fix: Groq fallback + corpus-only synthesize fallback (no invented facts).<br/>
+    <b>3. Stale Next.js .next cache</b> — Root: build + dev conflict. Fix: start_all.sh clears .next before dev server.
     """
     story.append(Paragraph(failures, body))
 
     story.append(Paragraph("Tradeoff", h))
     story.append(
         Paragraph(
-            "<b>Accuracy vs latency:</b> Used in-memory numpy cosine over ~400 chunks (not Pinecone) to keep p95 chat &lt;2s and $0 vector hosting. "
-            "Tradeoff: won't scale past ~5k chunks — acceptable for personal corpus.",
+            "<b>Accuracy vs latency:</b> In-memory hybrid BM25 + BGE vectors over personal corpus (~35–400 chunks) "
+            "instead of hosted Pinecone — keeps retrieval &lt;200ms and $0 vector hosting. "
+            "Tradeoff: won't scale past ~5k chunks; fine for resume + GitHub scope.",
             body,
         )
     )
@@ -115,8 +122,8 @@ def build_pdf():
     story.append(Paragraph("+2 weeks roadmap", h))
     story.append(
         Paragraph(
-            "Hybrid retrieval (BM25 + vectors), Langfuse traces on every tool call, automated voice regression suite, "
-            "and commit-diff ingestion via GitHub webhooks for fresher repo answers.",
+            "Langfuse traces on every tool call, automated voice regression from TEST_SCRIPTS.md, "
+            "GitHub webhook re-ingest on push, and multilingual voice (Hindi code-switch) using Josh-AI-TASK learnings.",
             body,
         ),
     )

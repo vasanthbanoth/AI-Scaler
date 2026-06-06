@@ -62,9 +62,11 @@ def list_repos() -> list[str]:
     url = f"https://api.github.com/users/{GITHUB_USER}/repos?per_page=100"
     with httpx.Client(timeout=30) as c:
         r = c.get(url, headers=gh_headers())
-        r.raise_for_status()
-        for repo in r.json():
-            names.add(repo["name"])
+        if r.status_code == 200:
+            for repo in r.json():
+                names.add(repo["name"])
+        else:
+            print(f"GitHub API {r.status_code} — using {len(PRIORITY_REPOS)} priority repos only", file=sys.stderr)
     return sorted(names)
 
 
@@ -123,15 +125,37 @@ def chunk_text(text: str, source: str, meta: dict) -> list[dict]:
     return chunks
 
 
-def embed_batch(client: OpenAI, texts: list[str]) -> list[list[float]]:
+def embed_batch_openai(client: OpenAI, texts: list[str]) -> list[list[float]]:
     resp = client.embeddings.create(model=EMBED_MODEL, input=texts)
     return [d.embedding for d in resp.data]
 
 
+def embed_batch(texts: list[str]) -> tuple[list[list[float]], str]:
+    provider = os.getenv("EMBEDDING_PROVIDER", "auto")
+    if OPENAI_KEY and provider in ("auto", "openai"):
+        try:
+            client = OpenAI(api_key=OPENAI_KEY)
+            return embed_batch_openai(client, texts), "openai"
+        except Exception as e:
+            print(f"OpenAI embed failed ({e}) — using local embeddings", file=sys.stderr)
+    from embed_local import embed_texts
+
+    return embed_texts(texts), "local"
+
+
+def write_embedding_meta(provider: str) -> None:
+    meta_path = ROOT / "data" / "embedding_meta.json"
+    if provider == "openai":
+        meta_path.write_text(
+            json.dumps({"provider": "openai", "model": EMBED_MODEL}, indent=2)
+        )
+    elif meta_path.exists():
+        pass  # embed_corpus already wrote local meta
+    else:
+        meta_path.write_text(json.dumps({"provider": "local", "model": "tfidf"}, indent=2))
+
+
 def main():
-    if not OPENAI_KEY:
-        print("Set OPENAI_API_KEY in .env", file=sys.stderr)
-        sys.exit(1)
 
     if not RESUME_PATH.exists():
         print(f"Missing {RESUME_PATH}", file=sys.stderr)
@@ -145,9 +169,13 @@ def main():
     print(f"Ingesting {len(repos)} repos for @{GITHUB_USER}…")
 
     for repo in repos:
-        readme = fetch_readme(repo)
-        langs = fetch_languages(repo)
-        commits = fetch_commits(repo)
+        try:
+            readme = fetch_readme(repo)
+            langs = fetch_languages(repo)
+            commits = fetch_commits(repo)
+        except Exception as e:
+            print(f"  ! {repo} skipped ({e})", file=sys.stderr)
+            continue
         body_parts = [f"# Repository: {repo} ({GITHUB_USER}/{repo})"]
         if langs:
             body_parts.append(f"Languages: {langs}")
@@ -177,14 +205,29 @@ def main():
         seen.add(key)
         unique.append(c)
 
-    client = OpenAI(api_key=OPENAI_KEY)
-    batch_size = 64
-    for i in range(0, len(unique), batch_size):
-        batch = unique[i : i + batch_size]
-        vectors = embed_batch(client, [b["text"] for b in batch])
-        for b, v in zip(batch, vectors):
+    provider = os.getenv("EMBEDDING_PROVIDER", "auto")
+    use_local_only = provider == "local" or (not OPENAI_KEY and provider == "auto")
+
+    if use_local_only:
+        from embed_local import embed_corpus
+
+        print(f"Embedding {len(unique)} chunks with local model (free, no billing)…")
+        vectors = embed_corpus([b["text"] for b in unique], ROOT / "data" / "embedding_meta.json")
+        for b, v in zip(unique, vectors):
             b["embedding"] = v
-        print(f"Embedded {min(i + batch_size, len(unique))}/{len(unique)}")
+        embed_provider = "local"
+        print(f"Embedded {len(unique)}/{len(unique)} via {embed_provider}")
+    else:
+        batch_size = 32
+        embed_provider = "local"
+        for i in range(0, len(unique), batch_size):
+            batch = unique[i : i + batch_size]
+            vectors, embed_provider = embed_batch([b["text"] for b in batch])
+            for b, v in zip(batch, vectors):
+                b["embedding"] = v
+            print(f"Embedded {min(i + batch_size, len(unique))}/{len(unique)} via {embed_provider}")
+
+    write_embedding_meta(embed_provider)
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(unique, indent=0))

@@ -34,5 +34,11 @@
     "question": "Describe the internal architecture of vasanthbanoth/private-stealth-repo-9999.",
     "must_contain": ["don't", "corpus", "won't"],
     "must_not_contain": ["microservices", "kubernetes deployment at"]
+  },
+  {
+    "id": "booking",
+    "question": "I'd like to book an interview next week. What slots are available?",
+    "must_contain": ["IST", "email"],
+    "must_not_contain": ["hardcoded", "I invented"]
   }
 ]

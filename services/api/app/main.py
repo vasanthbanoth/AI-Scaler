@@ -11,30 +11,29 @@ from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
-from openai import OpenAI
 from pydantic import BaseModel, Field
 
+from app.booking_flow import handle_booking, is_booking_intent, try_complete_booking
 from app.calendar.calcom import CalcomClient
 from app.config import ROOT, get_settings
-from app.prompts import SYSTEM_PROMPT
-from app.rag.retrieve import Retriever
+from app.rag.demo import keyword_search, load_demo_store
+from app.rag.hybrid import HybridRetriever
 from app.rag.store import ChunkStore
+from app.rag.synthesize import synthesize_reply
 
 log = logging.getLogger("persona")
 store = ChunkStore(get_settings().chunks_path)
-retriever: Retriever | None = None
-
-STATIC_DIR = Path(__file__).parent / "static"
+retriever: HybridRetriever | None = None
+demo_mode = False
 
 
 def _maybe_run_ingest():
     settings = get_settings()
     if store.load():
         return True
-    if not settings.openai_api_key:
-        log.warning("No chunks.json and OPENAI_API_KEY unset — skipping auto-ingest")
+    embed_local = os.getenv("EMBEDDING_PROVIDER", "auto") == "local"
+    if not settings.openai_api_key and not embed_local:
+        log.warning("No chunks.json — set OPENAI_API_KEY or EMBEDDING_PROVIDER=local for ingest")
         return False
     run = os.getenv("RUN_INGEST_ON_START", "").lower() in ("1", "true", "yes")
     if not run and not settings.run_ingest_on_start:
@@ -54,9 +53,14 @@ def _maybe_run_ingest():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global retriever
+    global retriever, demo_mode
     if _maybe_run_ingest() or store.load():
-        retriever = Retriever(store)
+        retriever = HybridRetriever(store)
+    elif (ROOT / "data" / "resume.md").exists():
+        demo_store = load_demo_store(ROOT / "data" / "resume.md")
+        store.chunks = demo_store.chunks
+        demo_mode = True
+        log.warning("Resume-only demo mode — run ingest.py for full GitHub RAG")
     else:
         log.warning("Corpus not loaded — POST /chat will return 503")
     yield
@@ -98,45 +102,88 @@ class BookRequest(BaseModel):
 
 @app.get("/health")
 async def health():
+    s = get_settings()
+    cal = CalcomClient()
     return {
         "ok": True,
         "chunks_loaded": len(store.chunks),
-        "corpus_ready": len(store.chunks) > 0,
+        "corpus_ready": len(store.chunks) > 0 and not demo_mode,
+        "demo_mode": demo_mode,
+        "openai_configured": bool(s.openai_api_key and s.openai_api_key.startswith("sk-")),
+        "groq_configured": bool(s.groq_api_key),
+        "calendar_configured": cal.configured,
+        "retrieval": "hybrid" if retriever else ("demo" if demo_mode else "none"),
     }
 
 
 @app.post("/rag/search")
 async def rag_search(body: SearchRequest):
-    if not retriever:
+    if not retriever and not demo_mode:
         raise HTTPException(503, "Corpus not ingested. Run: python scripts/ingest.py")
-    return {"results": retriever.query(body.query, k=body.k)}
+    return {"results": _retrieve(body.query, k=body.k)}
+
+
+def _retrieve(message: str, k: int = 8) -> list[dict]:
+    if retriever:
+        return retriever.query(message, k=k)
+    if demo_mode:
+        hits = keyword_search(store, message, k=k)
+        return [
+            {
+                "text": c.text,
+                "source": c.source + " (demo)",
+                "score": round(score, 4),
+                "meta": c.meta,
+            }
+            for c, score in hits
+        ]
+    return []
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(body: ChatRequest):
-    if not retriever:
+    if not retriever and not demo_mode:
         raise HTTPException(503, "Corpus not ingested. Run: python scripts/ingest.py")
 
     t0 = time.perf_counter()
-    hits = retriever.query(body.message, k=8)
+    settings = get_settings()
+
+    booking_done = await try_complete_booking(body.message, body.session_id)
+    if booking_done:
+        latency = int((time.perf_counter() - t0) * 1000)
+        return ChatResponse(reply=booking_done, sources=[], latency_ms=latency)
+
+    if is_booking_intent(body.message):
+        reply = await handle_booking(body.message, body.session_id)
+        latency = int((time.perf_counter() - t0) * 1000)
+        return ChatResponse(reply=reply, sources=[], latency_ms=latency)
+
+    hits = _retrieve(body.message, k=8)
     context = "\n\n---\n\n".join(
         f"[{h['source']}] (score={h['score']})\n{h['text']}" for h in hits
     )
 
-    settings = get_settings()
-    client = OpenAI(api_key=settings.openai_api_key)
-    completion = client.chat.completions.create(
-        model=settings.chat_model,
-        temperature=0.2,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": f"CONTEXT:\n{context}\n\nUSER:\n{body.message}",
-            },
-        ],
-    )
-    reply = completion.choices[0].message.content or ""
+    def _grounded_reply() -> str:
+        return synthesize_reply(body.message, hits)
+
+    from app.rag.synthesize import _asks_unknown_repo, _is_injection
+
+    if _is_injection(body.message) or _asks_unknown_repo(body.message, hits):
+        latency = int((time.perf_counter() - t0) * 1000)
+        return ChatResponse(reply=_grounded_reply(), sources=hits[:2], latency_ms=latency)
+
+    if demo_mode and not settings.openai_api_key and not settings.groq_api_key:
+        latency = int((time.perf_counter() - t0) * 1000)
+        return ChatResponse(reply=_grounded_reply(), sources=hits, latency_ms=latency)
+
+    try:
+        from app.llm import chat_completion
+
+        reply = chat_completion(context, body.message)
+    except Exception as e:
+        log.warning("LLM fallback: %s", e)
+        reply = _grounded_reply()
+
     latency = int((time.perf_counter() - t0) * 1000)
     return ChatResponse(reply=reply, sources=hits, latency_ms=latency)
 
@@ -164,12 +211,6 @@ async def calendar_book(body: BookRequest):
     if not result.get("ok"):
         raise HTTPException(400, result.get("error", "booking failed"))
     return result
-
-
-# ─── Vapi tool webhook (function calls from voice agent) ───
-
-class VapiToolCall(BaseModel):
-    message: dict[str, Any] = Field(default_factory=dict)
 
 
 def _verify_vapi(secret: str | None, header: str | None):
@@ -202,22 +243,21 @@ async def vapi_webhook(
         tool_call_id = tc.get("id")
         if name == "search_knowledge":
             q = args.get("query", "")
-            if not retriever:
-                out = "Corpus not loaded."
-            else:
-                hits = retriever.query(q, k=5)
-                out = "\n".join(f"{h['source']}: {h['text'][:400]}" for h in hits)
+            hits = _retrieve(q, k=5)
+            out = (
+                "\n".join(f"{h['source']}: {h['text'][:400]}" for h in hits)
+                if hits
+                else "No matching context in corpus."
+            )
         elif name == "get_availability":
             from datetime import datetime, timedelta
 
             cal = CalcomClient()
-            slots = await cal.get_slots(
-                datetime.now(), datetime.now() + timedelta(days=7)
-            )
+            slots = await cal.get_slots(datetime.now(), datetime.now() + timedelta(days=7))
             out = (
                 ", ".join(s["start"] for s in slots[:8])
                 if slots
-                else "No slots returned — calendar API may need configuration."
+                else "No slots — Cal.com may need CALCOM_API_KEY and CALCOM_EVENT_TYPE_ID."
             )
         elif name == "book_interview":
             cal = CalcomClient()
@@ -236,25 +276,11 @@ async def vapi_webhook(
     return {"results": results}
 
 
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-
 @app.get("/")
 async def root():
-    if (STATIC_DIR / "chat.html").exists():
-        return RedirectResponse("/chat")
     return {
         "service": "vasanth-ai-persona",
         "docs": "/docs",
-        "chat": "/chat",
+        "health": "/health",
         "resume": str(ROOT / "data" / "resume.md"),
     }
-
-
-@app.get("/chat")
-async def chat_ui():
-    path = STATIC_DIR / "chat.html"
-    if not path.exists():
-        raise HTTPException(404, "chat UI missing")
-    return FileResponse(path, media_type="text/html")

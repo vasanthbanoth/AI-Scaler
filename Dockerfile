@@ -3,7 +3,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY services/api/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt httpx tiktoken python-dotenv
+RUN pip install --no-cache-dir -r requirements.txt httpx tiktoken python-dotenv fastembed
 
 COPY services/api/app ./app
 COPY data ./data

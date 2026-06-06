@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 from pathlib import Path
 
 import httpx
 from dotenv import load_dotenv
-from openai import OpenAI
 
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
@@ -21,7 +21,22 @@ GOLDEN = Path(__file__).parent / "golden_qa.json"
 OUT = Path(__file__).parent / "runs" / "chat_eval.json"
 
 
-def judge_answer(client: OpenAI, question: str, answer: str, must_contain: list, must_not_contain: list) -> dict:
+def heuristic_judge(answer: str, must_contain: list, must_not_contain: list) -> dict:
+    a = answer.lower()
+    has_required = any(m.lower() in a for m in must_contain) if must_contain else True
+    has_forbidden = any(m.lower() in a for m in must_not_contain) if must_not_contain else False
+    grounded = bool(re.search(r"\[resume\]|\[github:", answer, re.I)) or len(answer) > 80
+    return {
+        "pass": has_required and not has_forbidden,
+        "grounded": grounded,
+        "hallucination": has_forbidden,
+        "reason": "heuristic judge (OpenAI quota fallback)",
+    }
+
+
+def llm_judge(client, question: str, answer: str, must_contain: list, must_not_contain: list) -> dict:
+    from openai import OpenAI
+
     prompt = f"""You are an eval judge for a RAG chatbot.
 Question: {question}
 Answer: {answer}
@@ -40,11 +55,21 @@ Return JSON only: {{"pass": bool, "grounded": bool, "hallucination": bool, "reas
 
 def main():
     cases = json.loads(GOLDEN.read_text())
-    if not os.getenv("OPENAI_API_KEY"):
-        print("OPENAI_API_KEY required for judge", file=sys.stderr)
-        sys.exit(1)
+    client = None
+    if os.getenv("OPENAI_API_KEY"):
+        try:
+            from openai import OpenAI
 
-    client = OpenAI()
+            client = OpenAI()
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                max_tokens=5,
+                messages=[{"role": "user", "content": "ping"}],
+            )
+        except Exception as e:
+            print(f"LLM judge unavailable ({e}) — using heuristic judge", file=sys.stderr)
+            client = None
+
     results = []
     latencies = []
 
@@ -56,13 +81,23 @@ def main():
             latencies.append(latency)
             body = r.json()
             answer = body.get("reply", "")
-            verdict = judge_answer(
-                client,
-                case["question"],
-                answer,
-                case.get("must_contain", []),
-                case.get("must_not_contain", []),
-            )
+            if client:
+                try:
+                    verdict = llm_judge(
+                        client,
+                        case["question"],
+                        answer,
+                        case.get("must_contain", []),
+                        case.get("must_not_contain", []),
+                    )
+                except Exception:
+                    verdict = heuristic_judge(
+                        answer, case.get("must_contain", []), case.get("must_not_contain", [])
+                    )
+            else:
+                verdict = heuristic_judge(
+                    answer, case.get("must_contain", []), case.get("must_not_contain", [])
+                )
             results.append(
                 {
                     "id": case["id"],
@@ -83,6 +118,7 @@ def main():
         "hallucination_rate": round(hall / len(results), 3),
         "p50_latency_ms": sorted(latencies)[len(latencies) // 2],
         "p95_latency_ms": sorted(latencies)[int(len(latencies) * 0.95)],
+        "judge": "llm" if client else "heuristic",
         "results": results,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)

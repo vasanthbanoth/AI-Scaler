@@ -1,48 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
-  --bg: #0b0f14;
-  --panel: #121a24;
-  --border: #1e2a3a;
-  --text: #e8eef6;
-  --muted: #8fa3b8;
-  --accent: #3dd6c6;
-  --accent-dim: #2a9d90;
-  --danger: #f07178;
-  --user: #1a3a4a;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --accent: #2563eb;
 }
 
-* {
-  box-sizing: border-box;
+html {
+  scroll-behavior: smooth;
 }
 
-html,
 body {
-  margin: 0;
-  min-height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  @apply bg-white text-slate-900 antialiased;
+  font-feature-settings: "ss01", "cv11";
 }
 
-a {
-  color: var(--accent);
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-5 md:px-8;
+  }
+
+  .section-pad {
+    @apply py-16 md:py-20;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-400 hover:bg-slate-50;
+  }
+
+  .btn-white {
+    @apply inline-flex items-center justify-center rounded-lg border border-white/60 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20;
+  }
+
+  .gradient-hero {
+    background: linear-gradient(160deg, #0f172a 0%, #1e3a5f 55%, #1d4ed8 100%);
+  }
+
+  .gradient-cta {
+    background: linear-gradient(100deg, #0f766e 0%, #1d4ed8 100%);
+  }
+
+  .gradient-card-green {
+    background: linear-gradient(145deg, #0d9488 0%, #1e40af 100%);
+  }
+
+  .gradient-card-pink {
+    background: linear-gradient(145deg, #4338ca 0%, #7c3aed 100%);
+  }
+
+  .gradient-card-purple {
+    background: linear-gradient(145deg, #312e81 0%, #4f46e5 100%);
+  }
+
+  .card-elevated {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+
+  .prose-chat {
+    @apply prose prose-sm max-w-none prose-p:my-1.5 prose-headings:font-semibold prose-headings:text-slate-900 prose-a:text-blue-600;
+  }
+
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.18em] text-slate-500;
+  }
 }
 
-button {
-  font: inherit;
-  cursor: pointer;
+::-webkit-scrollbar {
+  width: 6px;
 }
-
-input,
-textarea {
-  font: inherit;
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.6rem 0.75rem;
-}
-
-textarea {
-  resize: vertical;
-  min-height: 2.5rem;
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-300;
 }

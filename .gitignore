@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+apps/web/.env.local
 
 # runtime / build
 node_modules/
@@ -32,6 +33,9 @@ evals/runs/
 
 # python venv
 .venv/
+
+# portable node (auto-downloaded)
+.tools/
 
 # uploads
 uploads/

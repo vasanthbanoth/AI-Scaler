@@ -8,3 +8,6 @@ pydantic==2.10.4
 pydantic-settings==2.7.0
 tiktoken==0.8.0
 reportlab==4.2.5
+rank-bm25==0.2.2
+sse-starlette==2.2.1
+fastembed>=0.4.0

@@ -2,6 +2,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,8 @@ def _repo_root() -> Path:
 
 
 ROOT = _repo_root()
+load_dotenv(ROOT / ".env", override=False)
+load_dotenv(ROOT / ".env.local", override=True)
 
 
 class Settings(BaseSettings):
@@ -26,6 +29,7 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = ""
+    groq_api_key: str = ""
     api_base_url: str = "http://localhost:8000"
 
     calcom_api_key: str = ""
