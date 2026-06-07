@@ -17,7 +17,6 @@ venv/
 .Python
 
 # vector artifacts (regenerate via ingest)
-data/chunks.json
 data/embeddings.npy
 
 # logs & local db
