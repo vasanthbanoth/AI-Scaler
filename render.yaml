@@ -30,3 +30,5 @@ services:
         value: vasanthbanoth
       - key: GITHUB_TOKEN
         sync: false
+      - key: NEXT_PUBLIC_VOICE_PHONE
+        value: "+16574390168"
