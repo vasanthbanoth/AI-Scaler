@@ -12,7 +12,7 @@ fi
 [[ -f .env ]] && set -a && source .env && set +a
 source .venv/bin/activate
 export REPO_ROOT="$ROOT"
-export PYTHONPATH="$ROOT/services/api"
-cd "$ROOT/services/api"
+export PYTHONPATH="$ROOT/backend"
+cd "$ROOT/backend"
 echo "Chat → http://localhost:8000/chat"
 exec uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

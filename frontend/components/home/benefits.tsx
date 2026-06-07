@@ -3,18 +3,18 @@ import { Calendar, Database, Mic } from "lucide-react";
 const BENEFITS = [
   {
     icon: Database,
-    title: "Answers from real code",
-    desc: "Hybrid search over my resume and 12+ GitHub repos. Citations on every claim — not a scripted demo bot.",
+    title: "Grounded in Real Experience",
+    desc: "Ask questions and get answers based strictly on my documented experience, resume, and GitHub repositories.",
   },
   {
     icon: Mic,
-    title: "Same brain on phone",
-    desc: "Voice agent hits the identical RAG corpus and Cal.com tools. One API, two channels.",
+    title: "Full Stack Expertise",
+    desc: "Built using modern technologies like Next.js and FastAPI, demonstrating end-to-end development skills.",
   },
   {
     icon: Calendar,
-    title: "Straight when it doesn't know",
-    desc: "Refuses to invent project details. Built for hard follow-up questions, not surface-level small talk.",
+    title: "Transparent & Accurate",
+    desc: "The assistant provides factual information without inventing details, ensuring you get an accurate picture of my background.",
   },
 ];
 
@@ -22,9 +22,9 @@ export function BenefitsSection() {
   return (
     <section id="work" className="section-pad">
       <div className="container-page">
-        <p className="eyebrow text-center">What you get</p>
+        <p className="eyebrow text-center">Key Features</p>
         <h2 className="mx-auto mt-3 max-w-2xl text-center text-3xl font-bold tracking-tight md:text-[2.5rem]">
-          A portfolio you can interrogate
+          Interactive AI Assistant
         </h2>
         <div className="mt-14 grid gap-10 md:grid-cols-3">
           {BENEFITS.map((b) => (

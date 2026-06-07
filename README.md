@@ -29,13 +29,66 @@ End-to-end AI representative for the **Scaler AI Engineer Intern** screening: vo
 cp .env.example .env
 # Fill keys (see SUBMIT.md). Minimum for local RAG: EMBEDDING_PROVIDER=local
 
-./scripts/auto_everything.sh   # ingest + deps
-./scripts/start_all.sh         # API :8000 + UI :3000
+./scripts/setup.sh             # ingest + deps + build frontend
+./scripts/start.sh             # Server on port 8000
 ```
 
-- Landing: http://localhost:3000  
-- Chat: http://localhost:3000/chat  
-- API: http://localhost:8000/health  
+- Landing & Chat: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+
+## Architecture
+
+```mermaid
+flowchart TB
+  subgraph evaluators [Scaler evaluators]
+    Phone[Phone call]
+    Web[Browser chat]
+  end
+
+  subgraph unified_server [FastAPI Server :8000]
+    subgraph frontend [Frontend Static Build]
+      Landing[Landing /]
+      ChatUI[Chat /chat]
+    end
+    subgraph backend [Backend API]
+      ChatAPI[API /api/chat]
+      RAG[Hybrid RAG<br/>BM25 + BGE vectors]
+      Cal[Cal.com v2]
+      BookFlow[booking_flow.py]
+      VapiHook[/voice/vapi]
+    end
+  end
+
+  subgraph voice [Vapi cloud]
+    Vapi[Vapi orchestrator]
+    STT[Deepgram nova-2]
+    TTS[ElevenLabs]
+    Twilio[Twilio number]
+  end
+
+  subgraph corpus [Offline ingest]
+    Resume[data/resume.md]
+    GH[GitHub API<br/>README + commits]
+    Chunks[data/chunks.json]
+  end
+
+  Web --> Landing
+  Web --> ChatUI
+  ChatUI --> ChatAPI
+  ChatAPI -->|POST /chat| RAG
+  ChatAPI -->|booking intent| BookFlow
+  BookFlow --> Cal
+  Phone --> Twilio --> Vapi
+  Vapi --> STT
+  Vapi --> TTS
+  Vapi --> VapiHook
+  VapiHook --> RAG
+  VapiHook --> Cal
+  ingest[scripts/ingest.py] --> Resume
+  ingest --> GH
+  ingest --> Chunks
+  RAG --> Chunks
+```
 
 ## Voice setup
 
@@ -56,7 +109,7 @@ python evals/generate_report.py    # → evals/output/eval_report.pdf
 
 ## Deploy
 
-**Vercel** = chat UI · **Render** = API/RAG/voice webhooks · **Vapi** = phone
+**Unified Deployment** = The Next.js frontend is built statically and served by the FastAPI backend on a single port. Simply deploy the `Dockerfile` to a service like Render or Fly.io. **Vapi** handles the phone number.
 
 See **[docs/DEPLOY.md](docs/DEPLOY.md)** for step-by-step instructions.
 

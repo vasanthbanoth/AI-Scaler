@@ -9,13 +9,12 @@ export function HeroSection() {
         <div>
           <p className="eyebrow mb-5 text-blue-200/80">AI Engineer · RAG & voice systems</p>
           <h1 className="text-[2.5rem] font-bold leading-[1.08] tracking-tight md:text-5xl lg:text-[3.5rem]">
-            Talk to my work
+            Hi, I'm Vasanth Banoth
             <br />
-            before we meet.
+            Full Stack Developer
           </h1>
           <p className="mt-6 max-w-md text-[1.0625rem] leading-relaxed text-slate-200">
-            I built this agent on my resume and public GitHub — ask about Mail-InboxAI, speech ML,
-            or book a slot. Every answer cites a real source.
+            Welcome to my interactive portfolio. You can chat with my integrated AI assistant to learn more about my experience, projects, and skills.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link

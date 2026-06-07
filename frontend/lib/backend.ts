@@ -2,7 +2,7 @@
  * Server-only backend client. API keys stay in env — never import in client components.
  */
 
-const API = process.env.API_BASE_URL || "http://localhost:8000";
+const API = typeof window !== "undefined" ? "" : (process.env.API_BASE_URL || "http://localhost:8000");
 
 export type RagHit = {
   text: string;

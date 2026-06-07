@@ -35,7 +35,7 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 pip install -q -U pip
-pip install -q -r services/api/requirements.txt httpx tiktoken python-dotenv
+pip install -q -r backend/requirements.txt httpx tiktoken python-dotenv
 
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   echo "ERROR: OPENAI_API_KEY missing in .env"
@@ -44,6 +44,12 @@ fi
 
 export REPO_ROOT="$ROOT"
 python scripts/ingest.py
+
+echo "Building frontend..."
+cd frontend
+npm install
+npm run build
+cd "$ROOT"
 
 echo ""
 echo "=== Setup complete ==="

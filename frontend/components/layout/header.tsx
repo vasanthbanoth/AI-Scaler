@@ -13,7 +13,7 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-lg">
-      <div className="container-page flex h-[4.25rem] items-center justify-between gap-6">
+      <div className="flex h-[4.25rem] w-full items-center justify-between gap-6 px-6 md:px-12">
         <Logo />
 
         <nav className="hidden items-center gap-8 text-[0.9375rem] font-medium text-slate-600 md:flex">

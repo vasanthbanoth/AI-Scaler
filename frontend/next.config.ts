@@ -7,7 +7,9 @@ config({ path: path.resolve(__dirname, "../../.env") });
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  output: "export",
   images: {
+    unoptimized: true,
     remotePatterns: [
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
       { protocol: "https", hostname: "images.unsplash.com" },

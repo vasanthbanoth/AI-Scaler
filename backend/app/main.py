@@ -9,7 +9,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import PlainTextResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -188,6 +189,28 @@ async def chat(body: ChatRequest):
     return ChatResponse(reply=reply, sources=hits, latency_ms=latency)
 
 
+@app.post("/api/chat")
+async def api_chat_frontend(request: Request):
+    data = await request.json()
+    messages = data.get("messages", [])
+    session_id = data.get("session_id") or data.get("id") or "web-default"
+    
+    last_user = next((m for m in reversed(messages) if m.get("role") == "user"), None)
+    if not last_user or not last_user.get("content"):
+        raise HTTPException(400, "No message provided")
+    
+    chat_req = ChatRequest(message=last_user.get("content"), session_id=session_id)
+    chat_res = await chat(chat_req)
+    
+    text = chat_res.reply or "No reply generated."
+    sources = chat_res.sources or []
+    if sources:
+        chips = " ".join(f"[{s.get('source', '')}]" for s in sources[:5])
+        text += f"\n\n---\n*Sources: {chips}*"
+        
+    return PlainTextResponse(text)
+
+
 @app.get("/calendar/slots")
 async def calendar_slots(days: int = 7, timezone: str = "Asia/Kolkata"):
     from datetime import datetime, timedelta
@@ -276,11 +299,21 @@ async def vapi_webhook(
     return {"results": results}
 
 
-@app.get("/")
-async def root():
-    return {
-        "service": "vasanth-ai-persona",
-        "docs": "/docs",
-        "health": "/health",
-        "resume": str(ROOT / "data" / "resume.md"),
-    }
+@app.get("/{full_path:path}", include_in_schema=False)
+async def catch_all(full_path: str):
+    out_dir = ROOT / "frontend" / "out"
+    path = out_dir / full_path
+    if path.is_file():
+        return FileResponse(path)
+    
+    html_path = out_dir / f"{full_path}.html"
+    if html_path.is_file():
+        return FileResponse(html_path)
+        
+    if full_path == "" and (out_dir / "index.html").is_file():
+        return FileResponse(out_dir / "index.html")
+        
+    if (out_dir / "404.html").is_file():
+        return FileResponse(out_dir / "404.html", status_code=404)
+        
+    raise HTTPException(status_code=404, detail="Not Found")
