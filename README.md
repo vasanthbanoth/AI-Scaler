@@ -55,7 +55,7 @@ flowchart TB
       RAG[Hybrid RAG<br/>BM25 + BGE vectors]
       Cal[Cal.com v2]
       BookFlow[booking_flow.py]
-      VapiHook[/voice/vapi]
+      VapiHook["/voice/vapi"]
     end
   end
 
